@@ -2,6 +2,8 @@
 // App.xaml.cpp
 // Implementation of the App class.
 //
+// See https://github.com/jloehr/Wiimote-HIDAPI
+
 
 #include "pch.h"
 #include "MainPage.xaml.h"

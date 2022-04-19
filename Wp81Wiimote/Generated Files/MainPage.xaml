@@ -14,7 +14,8 @@
 
     <Page.BottomAppBar>
         <CommandBar>
-            <AppBarButton x:Name="RefreshAppBarButton" Tag="Refresh" Label="Refresh" Icon="Refresh" Click="AppBarButton_Click"/>
+            <AppBarButton x:ConnectionId='1' x:Name="RefreshAppBarButton" Tag="Refresh" Label="Refresh" Icon="Refresh"                           />
         </CommandBar>
     </Page.BottomAppBar>
 </Page>
+

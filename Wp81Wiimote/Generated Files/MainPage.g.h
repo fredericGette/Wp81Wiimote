@@ -8,6 +8,16 @@
 //     the code is regenerated.
 //------------------------------------------------------------------------------
 
+namespace Windows {
+    namespace UI {
+        namespace Xaml {
+            namespace Controls {
+                ref class TextBox;
+                ref class AppBarButton;
+            }
+        }
+    }
+}
 
 namespace Wp81Wiimote
 {
@@ -21,6 +31,8 @@ namespace Wp81Wiimote
     private:
         bool _contentLoaded;
     
+        private: ::Windows::UI::Xaml::Controls::TextBox^ TextBoxWiimoteFound;
+        private: ::Windows::UI::Xaml::Controls::AppBarButton^ RefreshAppBarButton;
     };
 }
 
