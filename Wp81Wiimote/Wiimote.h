@@ -32,6 +32,15 @@ extern "C" {
 			_Out_ UUID __RPC_FAR * Uuid
 		);
 
+	RPCRTAPI
+		_Must_inspect_result_
+		RPC_STATUS
+		RPC_ENTRY
+		UuidToStringW(
+			_In_ const UUID __RPC_FAR * Uuid,
+			_Outptr_ RPC_WSTR __RPC_FAR * StringUuid
+		);
+
 	WINBASEAPI
 	HANDLE
 	WINAPI

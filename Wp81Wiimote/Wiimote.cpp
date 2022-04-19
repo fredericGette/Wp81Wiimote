@@ -1,3 +1,7 @@
+/*
+* See https://github.com/jloehr/Wiimote-HIDAPI
+*/
+
 #include "pch.h"
 #include "Wiimote.h"
 
@@ -155,6 +159,14 @@ bool Wiimote::BluetoothAuthCallback(LPVOID pvParam, PBLUETOOTH_AUTHENTICATION_CA
 
 HANDLE Wiimote::findDeviceHandle()
 {
+	// Construct the expected device name (the first part seems to be enough):
+	// HID#<UUID_HID_SERVICE>_LOCALMFG&<QUALCOMM>#7&3a273ef&0&0000#<GUID_DEVINTERFACE_HID>
+	RPC_WSTR wcharUuid;
+	UuidToStringW(&HumanInterfaceDeviceServiceClass_UUID, &wcharUuid);
+	std::wstring wstringStartDeviceName = L"HID#{";
+	wstringStartDeviceName += std::wstring((WCHAR*)wcharUuid);
+	wstringStartDeviceName += L"}";
+
 	// List all devices
 	WCHAR devicenames[100 * MAX_PATH] = L"";
 	DWORD resultQDD = QueryDosDeviceW(NULL, devicenames, ARRAYSIZE(devicenames));
@@ -163,30 +175,59 @@ HANDLE Wiimote::findDeviceHandle()
 		Debug("QueryDosDeviceW failed with error code %d\n", GetLastError());
 	}
 
-	// Find the device name corresponding to a HumanInterfaceDeviceServiceClass_UUID
-	char deviceFileName[200] = "";
+	// Find the device having the expected name and corresponding to a Nintendo device
+
+	HANDLE hDevice = INVALID_HANDLE_VALUE;
 	WCHAR * deviceName = devicenames;
 	for (DWORD i = 0; i < resultQDD; i++) {
 		if (devicenames[i] == '\0') {
-			if (wcsncmp(deviceName, L"HID#{00001124-0000-1000-8000-00805f9b34fb}", 42) == 0)
+			if (wcsncmp(deviceName, wstringStartDeviceName.c_str(), wstringStartDeviceName.length()) == 0)
 			{
-				WCHAR wcharUuid[50];
-				wcsncpy_s(wcharUuid, deviceName + 5, 36);
+				Debug("HumanInterfaceDeviceServiceClass_UUID found:\n\t");
+				OutputDebugString(deviceName);
+				OutputDebugString(L"\n");
 
-				UUID Uuid;
-				UuidFromStringW((RPC_WSTR)wcharUuid, &Uuid);
+				std::wstring wstringDeviceName(deviceName);
+				std::string stringDeviceName(wstringDeviceName.begin(), wstringDeviceName.end());
+				std::string stringDeviceFileName = "\\\\.\\" + stringDeviceName;
 
-				if (HumanInterfaceDeviceServiceClass_UUID == Uuid)
+				Debug("Open device file: ");	OutputDebugStringA(stringDeviceFileName.c_str()); Debug("\n");
+				DWORD desired_access = GENERIC_READ | GENERIC_WRITE;
+				DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE;
+				hDevice = CreateFileA(stringDeviceFileName.c_str(),
+					desired_access,
+					share_mode,
+					NULL,
+					OPEN_EXISTING,
+					FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
+					NULL);
+				if (hDevice == INVALID_HANDLE_VALUE)    // cannot open the device file
 				{
-					Debug("HumanInterfaceDeviceServiceClass_UUID found:\n");
-					OutputDebugString(deviceName);
-					OutputDebugString(L"\n");
+					Debug("Error CreateFileA: %d\n", GetLastError());
+				}
+				else
+				{
+					WCHAR ProductName[255];
+					ZeroMemory(ProductName, sizeof(ProductName));
 
-					std::wstring wstringDeviceName(deviceName);
-					std::string stringDeviceName(wstringDeviceName.begin(), wstringDeviceName.end());
-					std::string stringDeviceFileName = "\\\\.\\" + stringDeviceName;
-					strcpy_s(deviceFileName, 200, stringDeviceFileName.c_str());
-					break;
+					if (HidD_GetProductString(hDevice, ProductName, 255))
+					{
+						Debug("HID Name: "); OutputDebugString(ProductName); Debug("\n");
+
+						if (wcsncmp(ProductName, L"Nintendo", 8) == 0)
+						{
+							Debug("Wiimote found.\n");
+							break;
+						}
+						else
+						{
+							Debug("Wiimote not detect. Please check that Wiimote is on. Press buttons 1+2.\n");
+						}
+					}
+					else
+					{
+						Debug("Can not check the product name of the HID device.\n");
+					}
 				}
 			}
 
@@ -195,41 +236,9 @@ HANDLE Wiimote::findDeviceHandle()
 		}
 	}
 
-	if (strlen(deviceFileName) > 0)
+	if (hDevice != INVALID_HANDLE_VALUE)
 	{
-		Debug("Device file name:");	OutputDebugStringA(deviceFileName); Debug("\n");
 
-		Debug("Open device file\n");
-		DWORD desired_access = GENERIC_READ | GENERIC_WRITE;
-		DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE;
-		HANDLE hDevice = CreateFileA(deviceFileName,
-			desired_access,
-			share_mode,
-			NULL,
-			OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
-			NULL);
-		if (hDevice == INVALID_HANDLE_VALUE)    // cannot open the device file
-		{
-			Debug("Error CreateFileA: %d\n", GetLastError());
-		}
-
-		WCHAR ProductName[255];
-		ZeroMemory(ProductName, sizeof(ProductName));
-
-		if (HidD_GetProductString(hDevice, ProductName, 255))
-		{
-			Debug("HID Name :"); OutputDebugString(ProductName); Debug("\n");
-
-			if (wcsncmp(ProductName, L"Nintendo", 8) != 0)
-			{
-				throw "Wiimote not detect. Please check that Wiimote is on. Press buttons 1+2.";
-			}
-		}
-		else
-		{
-			throw "Can not check the product name of the HID device.";
-		}
 
 		PHIDP_PREPARSED_DATA PreparsedData = NULL;
 		BOOL Result = HidD_GetPreparsedData(hDevice, &PreparsedData);
@@ -246,6 +255,7 @@ HANDLE Wiimote::findDeviceHandle()
 			HidD_FreePreparsedData(PreparsedData);
 		}
 
+		Debug("Capabilities:\n");
 		Debug("\tUsage (0x05 = Game Pad): 0x%X\n", Caps.Usage); // https://docs.microsoft.com/en-us/windows-hardware/drivers/hid/hid-usages#usage-id
 		Debug("\tUsagePage (0x01 = Generic Desktop Controls): 0x%X\n", Caps.UsagePage); // https://docs.microsoft.com/en-us/windows-hardware/drivers/hid/hid-usages#usage-page
 		Debug("\tInputReportByteLength: %d\n", Caps.InputReportByteLength);
@@ -253,9 +263,7 @@ HANDLE Wiimote::findDeviceHandle()
 		Debug("\tFeatureReportByteLength: %d\n", Caps.FeatureReportByteLength);
 
 		HidD_FreePreparsedData(PreparsedData);
-
-		return hDevice;
 	}
 	
-
+	return hDevice;
 }

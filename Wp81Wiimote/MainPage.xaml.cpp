@@ -71,23 +71,16 @@ void MainPage::Refresh()
 	ZeroMemory(deviceInfo, sizeof(BLUETOOTH_DEVICE_INFO));
 	deviceInfo->dwSize = sizeof(BLUETOOTH_DEVICE_INFO);
 
-	create_task([deviceInfo]()
+	create_task([this, deviceInfo]()
 	{
-		Wiimote::Detect(deviceInfo);
-	}).then([this, deviceInfo](task<void> previousTask)
-	{
-
-		Dispatcher->RunAsync(
-			CoreDispatcherPriority::Normal,
-			ref new DispatchedHandler([this, previousTask, deviceInfo]()
+		try
 		{
-			// Do stuff on the UI Thread
+			Wiimote::Detect(deviceInfo);
 
-			try
+			Dispatcher->RunAsync(
+				CoreDispatcherPriority::Normal,
+				ref new DispatchedHandler([this, deviceInfo]()
 			{
-				// Throw exception
-				previousTask.get();
-
 				TextBoxWiimoteFound->Text += L"\n";
 
 				// Allocate memory with the ref new keyword
@@ -117,14 +110,9 @@ void MainPage::Refresh()
 						{
 							HANDLE hDevice = INVALID_HANDLE_VALUE;
 							hDevice = Wiimote::findDeviceHandle();
-							return hDevice;
-						}).then([this](task<HANDLE> previousTask)
-						{
-							HANDLE hDevice = previousTask.get();
 
 							WCHAR ProductName[255];
 							ZeroMemory(ProductName, sizeof(ProductName));
-
 							if (HidD_GetProductString(hDevice, ProductName, 255))
 							{
 								OutputDebugString(L"HID Name :"); OutputDebugString(ProductName); OutputDebugString(L"\n");
@@ -142,14 +130,13 @@ void MainPage::Refresh()
 				{
 					// Wiimote not paired
 					TextBoxWiimoteFound->Text += L"Wiimote is not paired.\n";
-					create_task([deviceInfo]()
+					create_task([this, deviceInfo]()
 					{
 						Wiimote::RegisterPairingHandle(deviceInfo);
-					}).then([this, deviceInfo](task<void> previousTask)
-					{
+
 						Dispatcher->RunAsync(
 							CoreDispatcherPriority::Normal,
-							ref new DispatchedHandler([this, previousTask, deviceInfo]()
+							ref new DispatchedHandler([this]()
 						{
 							// Do stuff on the UI Thread
 
@@ -162,17 +149,21 @@ void MainPage::Refresh()
 						}));
 					});
 				}
-
-			}
-			catch (char* reason)
+			}));
+		}
+		catch (char* reason)
+		{
+			Dispatcher->RunAsync(
+				CoreDispatcherPriority::Normal,
+				ref new DispatchedHandler([this, reason]()
 			{
+				// Do stuff on the UI Thread
 				TextBoxWiimoteFound->Text += L"\n";
 				char16 reason16[100];
 				ZeroMemory(reason16, sizeof(reason16));
 				transform(reason, reason + strlen(reason), reason16, [](char c) { return (char16)c; });
 				TextBoxWiimoteFound->Text += ref new Platform::String(reason16);
-			}
-
-		}));
+			}));
+		}
 	});
 }
