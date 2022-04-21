@@ -53,10 +53,37 @@ extern "C" {
 		_In_ DWORD dwFlagsAndAttributes,
 		_In_opt_ HANDLE hTemplateFile
 	);
+
+	WINBASEAPI
+	BOOL
+	WINAPI
+	GetOverlappedResult(
+		_In_ HANDLE hFile,
+		_In_ LPOVERLAPPED lpOverlapped,
+		_Out_ LPDWORD lpNumberOfBytesTransferred,
+		_In_ BOOL bWait
+	);
 }
+
+typedef std::vector<UCHAR> DataBuffer;
 
 namespace Wiimote
 {
+	enum
+	{
+		BUTTON_LEFT = 0x0800,
+		BUTTON_RIGHT = 0x0400,
+		BUTTON_UP = 0x0200,
+		BUTTON_DOWN = 0x0100,
+		BUTTON_A = 0x0008,
+		BUTTON_B = 0x0004,
+		BUTTON_PLUS = 0x1000,
+		BUTTON_HOME = 0x0080,
+		BUTTON_MINUS = 0x0010,
+		BUTTON_ONE = 0x0002,
+		BUTTON_TWO = 0x0001
+	};
+
 	void Debug(const char* format, ...);
 	void DebugBtAddress(BLUETOOTH_ADDRESS address);
 	void BtAddressString(BLUETOOTH_ADDRESS address, char*buffer, int bufferSize);
@@ -65,4 +92,7 @@ namespace Wiimote
 	void RegisterPairingHandle(BLUETOOTH_DEVICE_INFO * device_info);
 	bool BluetoothAuthCallback(LPVOID pvParam, PBLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS  pAuthCallbackParams);
 	HANDLE findDeviceHandle();
+	void setLEDs(HANDLE hDevice, UCHAR flag);
+	void writeData(HANDLE hDevice, DataBuffer buffer);
+	void setDataReportingMode(HANDLE hDevice, UCHAR modeNumber);
 }

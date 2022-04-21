@@ -32,6 +32,7 @@ void Wiimote::DebugBtAddress(BLUETOOTH_ADDRESS address)
 
 void Wiimote::BtAddressString(BLUETOOTH_ADDRESS address, char*buffer, int bufferSize)
 {
+	ZeroMemory(buffer, bufferSize);
 	sprintf_s(buffer, bufferSize, (char*)"%02X:%02X:%02X:%02X:%02X:%02X", address.rgBytes[5], address.rgBytes[4], address.rgBytes[3], address.rgBytes[2], address.rgBytes[1], address.rgBytes[0]);
 }
 
@@ -199,7 +200,7 @@ HANDLE Wiimote::findDeviceHandle()
 					share_mode,
 					NULL,
 					OPEN_EXISTING,
-					FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
+					FILE_ATTRIBUTE_NORMAL,
 					NULL);
 				if (hDevice == INVALID_HANDLE_VALUE)    // cannot open the device file
 				{
@@ -266,4 +267,38 @@ HANDLE Wiimote::findDeviceHandle()
 	}
 	
 	return hDevice;
+}
+
+// https://wiibrew.org/wiki/Wiimote/Protocol#Player_LEDs
+// report id=0x11, set LEDs
+// LEDs 2&3 = 0x20+0x40=0x60
+// LED 1 = 0x10
+// LED 4 = 0x80
+void Wiimote::setLEDs(HANDLE hDevice, UCHAR flag) {
+
+	DataBuffer BufferSetLED({ 0x11, flag });
+
+	writeData(hDevice, BufferSetLED);
+}
+
+void Wiimote::writeData(HANDLE hDevice, DataBuffer buffer) {
+	DWORD BytesWritten;
+	BOOL Result = WriteFile(hDevice, buffer.data(), (DWORD)buffer.size(), &BytesWritten, NULL);
+	if (!Result)
+	{
+		DWORD Error = GetLastError();
+		Debug("Error WriteFile (997 = ERROR_IO_PENDING): %d\n", Error);
+	}
+}
+
+// MM = mode number, 0x30: Core Buttons
+void Wiimote::setDataReportingMode(HANDLE hDevice, UCHAR modeNumber) {
+
+	// report id=0x12, set Data Reporting mode
+	// TT MM
+	// TT = 0 no continuous reporting, report only when data has changed
+	// MM = mode number, 0x30: Core Buttons
+	DataBuffer BufferSetDataReportingMode({ 0x12, 0x00, 0x30 });
+
+	writeData(hDevice, BufferSetDataReportingMode);
 }

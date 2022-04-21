@@ -5,6 +5,7 @@
 
 #include "pch.h"
 #include <ppltasks.h>
+#include <strsafe.h>
 #include "MainPage.xaml.h"
 #include "Wiimote.h"
 
@@ -65,105 +66,105 @@ void MainPage::Refresh()
 {
 	TextBoxWiimoteFound->Text = L"Looking for Wiimote...\n";
 
-	// Allocate memory with the new keyword
-	// don't use the stack because we want to use the BLUETOOTH_DEVICE_INFO outside lambdas
-	BLUETOOTH_DEVICE_INFO* deviceInfo = new BLUETOOTH_DEVICE_INFO;
-	ZeroMemory(deviceInfo, sizeof(BLUETOOTH_DEVICE_INFO));
-	deviceInfo->dwSize = sizeof(BLUETOOTH_DEVICE_INFO);
-
-	create_task([this, deviceInfo]()
+	create_task([this]()
 	{
+		// Allocate memory with the new keyword
+		// don't use the stack because we want to use the BLUETOOTH_DEVICE_INFO outside lambdas
+		BLUETOOTH_DEVICE_INFO* deviceInfo = new BLUETOOTH_DEVICE_INFO;
+		ZeroMemory(deviceInfo, sizeof(BLUETOOTH_DEVICE_INFO));
+		deviceInfo->dwSize = sizeof(BLUETOOTH_DEVICE_INFO);
+
 		try
 		{
+			// Throw exception when Wiimote is not detected
 			Wiimote::Detect(deviceInfo);
 
-			Dispatcher->RunAsync(
-				CoreDispatcherPriority::Normal,
-				ref new DispatchedHandler([this, deviceInfo]()
+			// Allocate memory in the stack, will be free at the end of this lambda
+			char address[18]; // length 18 = xx:xx:xx:xx:xx:xx[0] 
+			Wiimote::BtAddressString(deviceInfo->Address, address, sizeof(address));
+			char16 address16[18];
+			// copy an array of char into an array of char16
+			transform(address, address + 18, address16, [](char c) { return (char16)c; });
+
+			UIConsoleAddText(L"\n"+ ref new Platform::String(deviceInfo->szName) + L" (" + ref new Platform::String(address16) + L")\n");
+
+			if (deviceInfo->fAuthenticated != FALSE)
 			{
-				TextBoxWiimoteFound->Text += L"\n";
+				// Wiimote already paired
+				UIConsoleAddText(L"Wiimote is paired.\n");
 
-				// Allocate memory with the ref new keyword
-				TextBoxWiimoteFound->Text += ref new Platform::String(deviceInfo->szName);
-
-				// Allocate memory in the stack, will be free at the end of this lambda
-				char address[18]; // length 18 = xx:xx:xx:xx:xx:xx[0] 
-				ZeroMemory(address, sizeof(address));
-				Wiimote::BtAddressString(deviceInfo->Address, address, sizeof(address));
-				char16 address16[18];
-				// copy an array of char into an array of char16
-				transform(address, address + 18, address16, [](char c) { return (char16)c; });
-
-				TextBoxWiimoteFound->Text += L" (";
-				TextBoxWiimoteFound->Text += ref new Platform::String(address16);
-				TextBoxWiimoteFound->Text += L")";
-
-				if (deviceInfo->fAuthenticated != FALSE)
+				if (deviceInfo->fConnected != FALSE)
 				{
-					// Wiimote already paired
-					TextBoxWiimoteFound->Text += L"Wiimote is paired.\n";
 
-					if (deviceInfo->fConnected != FALSE)
-					{
-						TextBoxWiimoteFound->Text += L"Wiimote is connected.\n";
-						create_task([deviceInfo]()
+					UIConsoleAddText(L"Wiimote is connected.\n");
+					
+					HANDLE hDevice = INVALID_HANDLE_VALUE;
+					hDevice = Wiimote::findDeviceHandle();
+
+					// LED 1 = 0x10
+					Wiimote::setLEDs(hDevice, 0x10);
+					// Core Buttons = 0x30
+					Wiimote::setDataReportingMode(hDevice, 0x30);
+
+					// Read data
+					UCHAR Buffer[255];
+					DWORD BytesRead;
+					while (true) {
+						BOOL Result = ReadFile(hDevice, &Buffer, sizeof(Buffer), &BytesRead, NULL);
+						if (!Result)
 						{
-							HANDLE hDevice = INVALID_HANDLE_VALUE;
-							hDevice = Wiimote::findDeviceHandle();
+							WCHAR buffer1[100];
+							StringCbPrintfW(buffer1, sizeof(buffer1), L"Error ReadFile: %d\n", GetLastError());
+							UIConsoleAddText(ref new Platform::String(buffer1));
+						}
 
-							WCHAR ProductName[255];
-							ZeroMemory(ProductName, sizeof(ProductName));
-							if (HidD_GetProductString(hDevice, ProductName, 255))
-							{
-								OutputDebugString(L"HID Name :"); OutputDebugString(ProductName); OutputDebugString(L"\n");
-							}
-						});
-					}
-					else
-					{
-						TextBoxWiimoteFound->Text += L"Wiimote is not connected.\n";
-						TextBoxWiimoteFound->Text += L"Press buttons 1+2 of the Wiimote.\n";
-						TextBoxWiimoteFound->Text += L"If Wiimote refuses to connect: Delete the Wiimote in the Bluetooth settings and restart the procedure.\n";
+						WCHAR buffer3[100];
+						StringCbPrintfW(buffer3, sizeof(buffer3), L"%04X ", (Buffer[1] << 8) + Buffer[2]);
+						UIConsoleAddText(ref new Platform::String(buffer3));
 					}
 				}
 				else
 				{
-					// Wiimote not paired
-					TextBoxWiimoteFound->Text += L"Wiimote is not paired.\n";
-					create_task([this, deviceInfo]()
-					{
-						Wiimote::RegisterPairingHandle(deviceInfo);
-
-						Dispatcher->RunAsync(
-							CoreDispatcherPriority::Normal,
-							ref new DispatchedHandler([this]()
-						{
-							// Do stuff on the UI Thread
-
-							TextBoxWiimoteFound->Text += L"Pairing handle registred.\n";
-							TextBoxWiimoteFound->Text += L"Please go to the Bluetooth settings to pair the Wiimote:\n";
-							TextBoxWiimoteFound->Text += L"1a-If the Wiimote line is not visible: Press buttons 1+2 of the Wiimote.\n";
-							TextBoxWiimoteFound->Text += L"1b-If the status is 'pairing'; Tap Wiimote line to switch from 'pairing' to 'tap to pair'.\n";
-							TextBoxWiimoteFound->Text += L"2-Tap Wiimote line to open pairing window.\n";
-							TextBoxWiimoteFound->Text += L"3-Tap 'cancel' to close the pairing window.\n";
-						}));
-					});
+					UIConsoleAddText(
+						L"Wiimote is not connected.\n" + 
+						L"Press buttons 1+2 of the Wiimote.\n" + 
+						L"If Wiimote refuses to connect: Delete the Wiimote in the Bluetooth settings and restart the procedure.\n"
+					);
 				}
-			}));
+			}
+			else
+			{
+				// Wiimote not paired
+				UIConsoleAddText(L"Wiimote is not paired.\n");
+
+				Wiimote::RegisterPairingHandle(deviceInfo);
+
+				UIConsoleAddText(L"Pairing handle registred.\n"+
+					L"Please go to the Bluetooth settings to pair the Wiimote:\n"+
+					L"1a-If the Wiimote line is not visible: Press buttons 1+2 of the Wiimote.\n"+
+					L"1b-If the status is 'pairing'; Tap Wiimote line to switch from 'pairing' to 'tap to pair'.\n"+
+					L"2-Tap Wiimote line to open pairing window.\n"+
+					L"3-Tap 'cancel' to close the pairing window.\n"
+				);
+			}
 		}
 		catch (char* reason)
 		{
-			Dispatcher->RunAsync(
-				CoreDispatcherPriority::Normal,
-				ref new DispatchedHandler([this, reason]()
-			{
-				// Do stuff on the UI Thread
-				TextBoxWiimoteFound->Text += L"\n";
-				char16 reason16[100];
-				ZeroMemory(reason16, sizeof(reason16));
-				transform(reason, reason + strlen(reason), reason16, [](char c) { return (char16)c; });
-				TextBoxWiimoteFound->Text += ref new Platform::String(reason16);
-			}));
+			char16 reason16[100];
+			ZeroMemory(reason16, sizeof(reason16));
+			transform(reason, reason + strlen(reason), reason16, [](char c) { return (char16)c; });
+
+			UIConsoleAddText(ref new Platform::String(reason16) + L"\n");
 		}
 	});
 }
+
+void MainPage::UIConsoleAddText(Platform::String ^ text ) {
+	Dispatcher->RunAsync(
+		CoreDispatcherPriority::Normal,
+		ref new DispatchedHandler([this, text]()
+	{
+		TextBoxWiimoteFound->Text += text;
+	}));
+}
+
