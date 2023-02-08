@@ -27,7 +27,7 @@ void Wiimote::DebugBtAddress(BLUETOOTH_ADDRESS address)
 	char buffer[18];
 	ZeroMemory(buffer, sizeof(buffer));
 	BtAddressString(address, buffer, sizeof(buffer));
-	Debug("%s", buffer);
+	Debug("%s (%I64u)", buffer, address.ullLong);
 }
 
 void Wiimote::BtAddressString(BLUETOOTH_ADDRESS address, char*buffer, int bufferSize)
